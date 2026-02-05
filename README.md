@@ -23,6 +23,8 @@ Una colección completa de implementaciones de respuesta estándar para APIs RES
   - [Go / Gin](#8-go--gin)
   - [PHP / Laravel](#9-php--laravel)
   - [Ruby / Rails](#10-ruby--rails)
+  - [Rust / Axum](#11-rust--axum)
+  - [Rust / Actix-web](#11-rust--actix-web)
 - [Ejemplos de Uso](#-ejemplos-de-uso)
 - [Códigos de Error Recomendados](#-códigos-de-error-recomendados)
 - [Mejores Prácticas](#-mejores-prácticas)
@@ -91,6 +93,8 @@ Todas las implementaciones siguen la misma estructura JSON:
 | Go / Gin | `global_response.go` | ✅ Fuerte | ✅ Sí |
 | PHP / Laravel | `GlobalResponse.php` | ⚠️ Mixto | ❌ No |
 | Ruby / Rails | `global_response.rb` | ❌ No | ❌ No |
+| Rust / Axum | `global_response.rs` | ✅ Fuerte | ✅ Sí |
+| Rust / Actix-web | `global_response.rs` | ✅ Fuerte | ✅ Sí |
 
 ---
 
@@ -2288,6 +2292,720 @@ curl http://localhost:3000/api/users
 
 # Consola de Rails (para debugging)
 rails console
+```
+
+---
+
+### 11. Rust / Actix-web
+
+#### 📦 Dependencias
+
+**Archivo: `Cargo.toml`**
+```toml
+[package]
+name = "my-actix-api"
+version = "1.0.0"
+edition = "2021"
+
+[dependencies]
+actix-web = "4.5"
+actix-rt = "2.9"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+env_logger = "0.11"
+```
+
+#### 🔧 Instalación
+
+```bash
+# Verificar instalación de Rust
+rustc --version
+cargo --version
+
+# Si no tienes Rust instalado:
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
+# Crear nuevo proyecto
+cargo new my-actix-api
+cd my-actix-api
+
+# Las dependencias se agregan en Cargo.toml
+# Luego ejecutar:
+cargo build
+```
+
+#### 📁 Estructura del Proyecto
+
+```
+my-actix-api/
+├── src/
+│   ├── main.rs
+│   ├── models/
+│   │   ├── mod.rs
+│   │   ├── global_response.rs
+│   │   └── user.rs
+│   ├── handlers/
+│   │   ├── mod.rs
+│   │   └── users.rs
+│   └── lib.rs (opcional)
+├── Cargo.toml
+└── Cargo.lock
+```
+
+#### 💻 Ejemplo de Uso
+
+**Archivo: `src/models/mod.rs`**
+```rust
+pub mod global_response;
+pub mod user;
+```
+
+**Archivo: `src/models/user.rs`**
+```rust
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct User {
+    pub id: u32,
+    pub name: String,
+    pub email: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateUserDto {
+    pub name: String,
+    pub email: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PaginationQuery {
+    pub page: Option<usize>,
+    pub page_size: Option<usize>,
+}
+```
+
+**Archivo: `src/handlers/mod.rs`**
+```rust
+pub mod users;
+```
+
+**Archivo: `src/handlers/users.rs`**
+```rust
+use actix_web::{web, HttpResponse, Result};
+use crate::models::{
+    global_response::GlobalResponse,
+    user::{User, CreateUserDto, PaginationQuery},
+};
+
+/// GET /api/users
+pub async fn get_users() -> Result<HttpResponse> {
+    let users = vec![
+        User {
+            id: 1,
+            name: "Juan".to_string(),
+            email: "juan@example.com".to_string(),
+        },
+        User {
+            id: 2,
+            name: "María".to_string(),
+            email: "maria@example.com".to_string(),
+        },
+    ];
+
+    let response = GlobalResponse::ok_with_data(
+        users,
+        "Usuarios obtenidos exitosamente",
+        "",
+    );
+
+    Ok(HttpResponse::Ok().json(response))
+}
+
+/// GET /api/users/paginated
+pub async fn get_users_paginated(
+    query: web::Query<PaginationQuery>
+) -> Result<HttpResponse> {
+    let page = query.page.unwrap_or(1);
+    let page_size = query.page_size.unwrap_or(10);
+
+    // Simular datos
+    let users: Vec<User> = (1..=10)
+        .map(|i| User {
+            id: i,
+            name: format!("User{}", i),
+            email: format!("user{}@example.com", i),
+        })
+        .collect();
+
+    let total_rows = 100;
+
+    let response = GlobalResponse::ok_paginated(
+        users,
+        total_rows,
+        page,
+        page_size,
+        "Usuarios obtenidos",
+        "",
+    );
+
+    Ok(HttpResponse::Ok().json(response))
+}
+
+/// POST /api/users
+pub async fn create_user(
+    user_data: web::Json<CreateUserDto>
+) -> Result<HttpResponse> {
+    // Validación
+    if user_data.name.trim().is_empty() {
+        let response = GlobalResponse::<User>::error(
+            "El nombre es requerido",
+            "VALIDATION_ERROR",
+        );
+        return Ok(HttpResponse::BadRequest().json(response));
+    }
+
+    if user_data.email.trim().is_empty() {
+        let response = GlobalResponse::<User>::error(
+            "El email es requerido",
+            "VALIDATION_ERROR",
+        );
+        return Ok(HttpResponse::BadRequest().json(response));
+    }
+
+    // Crear usuario
+    let user = User {
+        id: 1,
+        name: user_data.name.clone(),
+        email: user_data.email.clone(),
+    };
+
+    let response = GlobalResponse::ok_with_data(
+        user,
+        "Usuario creado exitosamente",
+        "USER_CREATED",
+    );
+
+    Ok(HttpResponse::Created().json(response))
+}
+```
+
+**Archivo: `src/main.rs`**
+```rust
+mod models;
+mod handlers;
+
+use actix_web::{web, App, HttpServer, middleware};
+use handlers::users;
+
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
+    // Configurar logger
+    env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
+
+    println!("🚀 Servidor corriendo en http://localhost:8080");
+
+    HttpServer::new(|| {
+        App::new()
+            // Middleware de logging
+            .wrap(middleware::Logger::default())
+            // Rutas de usuarios
+            .service(
+                web::scope("/api/users")
+                    .route("", web::get().to(users::get_users))
+                    .route("/paginated", web::get().to(users::get_users_paginated))
+                    .route("", web::post().to(users::create_user))
+            )
+            // Ruta raíz
+            .route("/", web::get().to(|| async {
+                web::Json(serde_json::json!({
+                    "message": "API funcionando con Rust y Actix-web"
+                }))
+            }))
+    })
+    .bind(("127.0.0.1", 8080))?
+    .run()
+    .await
+}
+```
+
+**Configuración adicional: `.env` (opcional)**
+```env
+RUST_LOG=info
+HOST=127.0.0.1
+PORT=8080
+```
+
+#### 🎯 Comandos de Ejecución
+
+```bash
+# Compilar en modo debug
+cargo build
+
+# Ejecutar en modo desarrollo
+cargo run
+
+# Compilar en modo release (optimizado)
+cargo build --release
+
+# Ejecutar versión optimizada
+./target/release/my-actix-api
+
+# Ejecutar con recarga automática (instalar cargo-watch)
+cargo install cargo-watch
+cargo watch -x run
+
+# Probar
+curl http://localhost:8080/api/users
+
+# Crear usuario
+curl -X POST http://localhost:8080/api/users \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Pedro","email":"pedro@example.com"}'
+
+# Formatear código
+cargo fmt
+
+# Verificar código (linter)
+cargo clippy
+
+# Ejecutar tests
+cargo test
+```
+
+#### ⚡ Características de Rust/Actix-web
+
+- **Alto rendimiento**: Actix-web es uno de los frameworks web más rápidos
+- **Seguridad de memoria**: Rust garantiza seguridad sin garbage collector
+- **Tipado fuerte**: Sistema de tipos robusto en tiempo de compilación
+- **Async/Await nativo**: Manejo eficiente de concurrencia
+- **Zero-cost abstractions**: Abstracciones sin costo en runtime
+
+---
+
+### 11. Rust / Axum
+
+#### 📦 Dependencias
+
+**Archivo: `Cargo.toml`**
+```toml
+[package]
+name = "my-rust-api"
+version = "1.0.0"
+edition = "2021"
+
+[dependencies]
+# Framework Axum
+axum = "0.7"
+
+# Runtime asíncrono
+tokio = { version = "1", features = ["full"] }
+
+# Serialización/Deserialización
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Torre para middleware
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors"] }
+
+# Opcional: para logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+```
+
+#### 🔧 Instalación
+
+```bash
+# Verificar instalación de Rust
+rustc --version
+cargo --version
+
+# Crear nuevo proyecto
+cargo new my-rust-api
+cd my-rust-api
+
+# Las dependencias se agregan en Cargo.toml
+# Luego ejecutar:
+cargo build
+
+# Crear estructura de carpetas
+mkdir -p src/models
+mkdir -p src/handlers
+mkdir -p src/services
+```
+
+#### 📁 Estructura del Proyecto
+
+```
+my-rust-api/
+├── src/
+│   ├── models/
+│   │   ├── mod.rs
+│   │   ├── global_response.rs
+│   │   └── user.rs
+│   ├── handlers/
+│   │   ├── mod.rs
+│   │   └── users_handler.rs
+│   ├── services/
+│   │   ├── mod.rs
+│   │   └── users_service.rs
+│   └── main.rs
+├── Cargo.toml
+└── Cargo.lock
+```
+
+#### 💻 Ejemplo de Uso
+
+**Archivo: `src/models/mod.rs`**
+```rust
+pub mod global_response;
+pub mod user;
+
+pub use global_response::GlobalResponse;
+pub use user::{User, CreateUserDto};
+```
+
+**Archivo: `src/models/user.rs`**
+```rust
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct User {
+    pub id: u32,
+    pub name: String,
+    pub email: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateUserDto {
+    pub name: String,
+    pub email: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PaginationParams {
+    #[serde(default = "default_page")]
+    pub page: usize,
+    #[serde(default = "default_page_size")]
+    pub page_size: usize,
+}
+
+fn default_page() -> usize {
+    1
+}
+
+fn default_page_size() -> usize {
+    10
+}
+```
+
+**Archivo: `src/services/mod.rs`**
+```rust
+pub mod users_service;
+
+pub use users_service::UsersService;
+```
+
+**Archivo: `src/services/users_service.rs`**
+```rust
+use crate::models::{User, CreateUserDto};
+use std::sync::Arc;
+use tokio::sync::Mutex;
+
+#[derive(Clone)]
+pub struct UsersService {
+    users: Arc<Mutex<Vec<User>>>,
+    next_id: Arc<Mutex<u32>>,
+}
+
+impl UsersService {
+    pub fn new() -> Self {
+        let initial_users = vec![
+            User {
+                id: 1,
+                name: "Juan".to_string(),
+                email: "juan@example.com".to_string(),
+            },
+            User {
+                id: 2,
+                name: "María".to_string(),
+                email: "maria@example.com".to_string(),
+            },
+        ];
+
+        Self {
+            users: Arc::new(Mutex::new(initial_users)),
+            next_id: Arc::new(Mutex::new(3)),
+        }
+    }
+
+    pub async fn get_all(&self) -> Vec<User> {
+        let users = self.users.lock().await;
+        users.clone()
+    }
+
+    pub async fn get_paginated(&self, page: usize, page_size: usize) -> (Vec<User>, usize) {
+        let users = self.users.lock().await;
+        let total = users.len();
+        
+        let start = (page - 1) * page_size;
+        let end = std::cmp::min(start + page_size, total);
+        
+        let paginated = if start < total {
+            users[start..end].to_vec()
+        } else {
+            Vec::new()
+        };
+        
+        (paginated, total)
+    }
+
+    pub async fn create(&self, dto: CreateUserDto) -> Result<User, String> {
+        if dto.name.is_empty() {
+            return Err("El nombre es requerido".to_string());
+        }
+
+        let mut users = self.users.lock().await;
+        let mut id = self.next_id.lock().await;
+        
+        let new_user = User {
+            id: *id,
+            name: dto.name,
+            email: dto.email,
+        };
+        
+        *id += 1;
+        users.push(new_user.clone());
+        
+        Ok(new_user)
+    }
+}
+```
+
+**Archivo: `src/handlers/mod.rs`**
+```rust
+pub mod users_handler;
+
+pub use users_handler::*;
+```
+
+**Archivo: `src/handlers/users_handler.rs`**
+```rust
+use axum::{
+    extract::{Query, State},
+    http::StatusCode,
+    response::IntoResponse,
+    Json,
+};
+use crate::models::{GlobalResponse, User, CreateUserDto};
+use crate::models::user::PaginationParams;
+use crate::services::UsersService;
+
+/// GET /api/users - Obtener todos los usuarios
+pub async fn get_users(
+    State(service): State<UsersService>,
+) -> impl IntoResponse {
+    let users = service.get_all().await;
+    
+    let response = GlobalResponse::ok_with_data(
+        users,
+        "Usuarios obtenidos exitosamente",
+        None::<String>,
+    );
+    
+    Json(response)
+}
+
+/// GET /api/users/paginated - Obtener usuarios paginados
+pub async fn get_users_paginated(
+    Query(params): Query<PaginationParams>,
+    State(service): State<UsersService>,
+) -> impl IntoResponse {
+    let (users, total) = service.get_paginated(params.page, params.page_size).await;
+    
+    let response = GlobalResponse::ok_paginated(
+        users,
+        total,
+        params.page,
+        params.page_size,
+        "Usuarios obtenidos",
+        None::<String>,
+    );
+    
+    Json(response)
+}
+
+/// POST /api/users - Crear un nuevo usuario
+pub async fn create_user(
+    State(service): State<UsersService>,
+    Json(payload): Json<CreateUserDto>,
+) -> impl IntoResponse {
+    match service.create(payload).await {
+        Ok(user) => {
+            let response = GlobalResponse::ok_with_data(
+                user,
+                "Usuario creado exitosamente",
+                Some("USER_CREATED"),
+            );
+            (StatusCode::CREATED, Json(response))
+        }
+        Err(error) => {
+            let response: GlobalResponse<()> = GlobalResponse::error(
+                error,
+                "VALIDATION_ERROR",
+            );
+            (StatusCode::BAD_REQUEST, Json(response))
+        }
+    }
+}
+```
+
+**Archivo: `src/main.rs`**
+```rust
+mod models;
+mod handlers;
+mod services;
+
+use axum::{
+    routing::{get, post},
+    Router,
+};
+use tower_http::cors::CorsLayer;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+use crate::handlers::{get_users, get_users_paginated, create_user};
+use crate::services::UsersService;
+
+#[tokio::main]
+async fn main() {
+    // Inicializar logging
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "my_rust_api=debug,tower_http=debug".into()),
+        )
+        .with(tracing_subscriber::fmt::layer())
+        .init();
+
+    // Crear servicio compartido
+    let users_service = UsersService::new();
+
+    // Construir rutas
+    let app = Router::new()
+        .route("/", get(|| async { "API funcionando con Rust y Axum 🦀" }))
+        .route("/api/users", get(get_users).post(create_user))
+        .route("/api/users/paginated", get(get_users_paginated))
+        .layer(CorsLayer::permissive())
+        .with_state(users_service);
+
+    // Iniciar servidor
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000")
+        .await
+        .unwrap();
+    
+    tracing::info!("🚀 Servidor corriendo en http://localhost:3000");
+    
+    axum::serve(listener, app)
+        .await
+        .unwrap();
+}
+```
+
+**Archivo: `.cargo/config.toml`** (opcional, para configuración)
+```toml
+[build]
+# Optimización para compilaciones más rápidas en desarrollo
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+
+[profile.dev]
+# Compilación más rápida en desarrollo
+opt-level = 0
+
+[profile.release]
+# Optimización máxima en producción
+opt-level = 3
+lto = true
+codegen-units = 1
+```
+
+#### 🎯 Comandos de Ejecución
+
+```bash
+# Verificar el proyecto
+cargo check
+
+# Ejecutar en modo desarrollo (con recarga automática usando cargo-watch)
+# Primero instalar cargo-watch:
+cargo install cargo-watch
+
+# Luego ejecutar con recarga automática:
+cargo watch -x run
+
+# O ejecutar normalmente:
+cargo run
+
+# Compilar para producción
+cargo build --release
+
+# Ejecutar versión de producción
+./target/release/my-rust-api
+
+# Ejecutar tests
+cargo test
+
+# Revisar código con clippy (linter)
+cargo clippy
+
+# Formatear código
+cargo fmt
+
+# Probar endpoints
+curl http://localhost:3000/api/users
+curl http://localhost:3000/api/users/paginated?page=1&pageSize=10
+curl -X POST http://localhost:3000/api/users \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Pedro","email":"pedro@example.com"}'
+```
+
+#### 🔥 Características Especiales de Rust
+
+**Seguridad de memoria sin garbage collector:**
+```rust
+// Rust garantiza seguridad de memoria en tiempo de compilación
+// Sin race conditions gracias al sistema de ownership
+```
+
+**Rendimiento:**
+```bash
+# Comparación de tamaño de binario y rendimiento
+# Rust produce binarios pequeños y extremadamente rápidos
+
+# Compilación optimizada reduce significativamente el tamaño:
+cargo build --release
+ls -lh target/release/my-rust-api
+```
+
+**Concurrencia segura:**
+```rust
+// Arc<Mutex<T>> permite compartir datos de forma segura entre threads
+// El compilador previene data races en tiempo de compilación
+pub struct UsersService {
+    users: Arc<Mutex<Vec<User>>>,  // Thread-safe por diseño
+}
+```
+
+#### 📊 Benchmarks (Ejemplo)
+
+Rust con Axum es uno de los frameworks más rápidos disponibles:
+
+```bash
+# Instalar herramienta de benchmarking
+cargo install cargo-criterion
+
+# Agregar a Cargo.toml:
+# [dev-dependencies]
+# criterion = "0.5"
 ```
 
 ---
